@@ -16,9 +16,6 @@ simple_gross_demand_plot <- ggplot(data, aes(x = as.Date(Date), y = demand_gross
        y = "Gross Demand") +
   theme_minimal()
 
-# Load necessary library
-library(ggplot2)
-
 # Create the plot for 'DSN' vs 'demand_gross'
 gross_demand_plot_against_days_since_november <- ggplot(data, aes(x = DSN, y = demand_gross, color = factor(start_year))) +
   geom_line() +  # Line plot to visualize the demand over days

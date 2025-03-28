@@ -494,9 +494,6 @@ simple_gross_demand_plot &lt;- ggplot(data, aes(x = as.Date(Date), y = demand_gr
        y = &quot;Gross Demand&quot;) +
   theme_minimal()
 
-# Load necessary library
-library(ggplot2)
-
 # Create the plot for &#39;DSN&#39; vs &#39;demand_gross&#39;
 gross_demand_plot_against_days_since_november &lt;- ggplot(data, aes(x = DSN, y = demand_gross, color = factor(start_year))) +
   geom_line() +  # Line plot to visualize the demand over days
