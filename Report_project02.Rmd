@@ -51,7 +51,6 @@ We can have a look at the dataset `SCS_demand_modelling.csv`.
 # Display the data
 head(data)
 str(data)
-data
 ```
 
 Blah blah blah
