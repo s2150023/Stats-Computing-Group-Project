@@ -27,8 +27,10 @@ gross_demand_plot_against_days_since_november <- ggplot(data, aes(x = DSN, y = d
        y = "Gross Demand",
        color = "Start Year") +
   theme_minimal() +
-  scale_color_viridis_d() +
-  scale_x_continuous(limits = c(0, 365))
+  scale_color_viridis_d()
+
+# Fit the suggested model
+suggested_model <- lm(demand_gross ~ wind + solar_S + temp + wdayindex + monthindex, data = data)
 
 # Testing me changing a file for github
 # Another GitHub test

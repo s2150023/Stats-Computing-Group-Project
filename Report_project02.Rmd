@@ -62,6 +62,17 @@ simple_gross_demand_plot
 gross_demand_plot_against_days_since_november
 ```
 
+Summary of the suggested model: $$M_0 : Y_i = \beta_0 + \beta_1 Wind_i + \beta_2 Solar_i + \beta_3 temp_i + \beta_4 wdayindex_i + \beta_5 monthindex_i + \epsilon_i,\quad \epsilon_i \sim Normal(0,\sigma^2)$$.
+
+```{r, echo = FALSE}
+
+# Show suggested model summary and residual plots
+summary(suggested_model)
+
+# Residual plots
+par(mfrow = c(2, 2))
+plot(suggested_model)
+```
 
 Emphasis should be placed on the data features that are relevant for the subsequent modeling. Include visualizations that help illustrate key patterns or relationships. All plots must also be described in the write up. Think carefully about whether each plot needs to be included in your final draft. Your report should include figures and tables but they should be as focused and impactful as possible.
 
