@@ -1,0 +1,256 @@
+---
+title: "Modelling Peak Electricity Demand in Great Britain"
+author: "Group 43, Conor McArthur sXXXXXXX, Felix Raasch s2150023 and Adam Smith s2184229"
+output:
+  html_document:
+    number_sections: no
+  pdf_document:
+    number_sections: no
+header-includes:
+  - \newcommand{\bm}[1]{\boldsymbol{#1}}
+  - \newcommand{\mat}[1]{\begin{bmatrix}#1\end{bmatrix}}
+---
+
+Word count: 2980(update)
+
+```{r setup, include = FALSE}
+# Modify this setup code chunk to set options
+# or add extra packages etc if needed.
+# See the project instructions for more details
+# on what code to show, and where/how.
+
+# Set default code chunk options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE
+)
+
+suppressPackageStartupMessages(library(tidyverse))
+theme_set(theme_bw())
+
+# To give the same random number sequence every time the document is knited,
+# making it easier to discuss the specific numbers in the text:
+set.seed(12345L)
+```
+
+```{r code=readLines("code.R"), eval=TRUE, echo=FALSE}
+# Do not change this code chunk
+# Load function definitions
+source("code.R")
+```
+
+
+# Introduction
+THEIR TEXT:
+This section provides a brief introduction to the task and the datasets used. The introduction is intended to be understood by NESO analysts with a scientific background but limited statistical expertise. You can assume that the reader of your report has read the executive summary. Briefly outline the overall approach taken in modeling future daily peak electricity demand, describe the main steps involved, and summarize the key conclusions drawn from the analysis.
+
+# Data description and exploratory analysis
+
+THEIR TEXT:
+Emphasis should be placed on the data features that are relevant for the subsequent modeling. Include visualizations that help illustrate key patterns or relationships. All plots must also be described in the write up. Think carefully about whether each plot needs to be included in your final draft. Your report should include figures and tables but they should be as focused and impactful as possible.
+
+Clearly describe all preprocessing steps, including any transformations or new variables created. If the additional dataset (`SCS_hourly_temp.csv` ) is used, provide a concise explanation of its structure and relevance to the analysis.
+
+### 2.1 Data Overview
+
+The analysis uses two datasets provided by NESO:
+- **SCS_demand_modelling.csv**: Contains daily data on electricity demand, weather factors, and temporal indicators
+- **SCS_hourly_temp.csv**: Contains hourly temperature data for additional temperature modeling
+
+The primary dataset includes the following key variables:
+- **demand_gross (MW)**: Daily peak electricity demand at 6 pm
+- **wind**: Estimated capacity factor of wind generation at 6 pm
+- **solar_S**: Estimated capacity factor of solar generation at 6 pm
+- **temp**: Population-weighted average temperature at 6 pm
+- **wdayindex**: Day of week (0-6, starting from Sunday)
+- **monthindex**: Month of year (0-11, starting from January)
+- **year**: Calendar year
+- **T0**: Average temperature from 3 pm-6 pm
+- **TE**: Average of T0 at 6 pm and TE at 6 pm on the previous day
+- **start_year**: Year at start of winter period
+- **DSN**: Number of days since November 1st
+
+Below is a table that summarises basic information from the non-indexed variables in the dataset.
+
+```{r data-summary-table, echo = FALSE}
+# Display Averages Table
+kable(data_summary, caption = "Summary Statistics of Key Variables")
+```
+
+We can also crudely have a look to see how the gross demand varies over time throughout the entire dataset.
+
+```{r, echo = FALSE, , message = FALSE}
+
+# Show plot
+simple_gross_demand_plot
+```
+
+**Yearly Effect**: This plot cleary shows a trend in the yearly gross demand, rising from the 1990s until 2005 then starting to fall again. We can also see that there may be trends within each year which needs to be examined more closely.
+
+To do that we now want to see how the gross demand varies based on our categorical variables, those that index dates.
+
+```{r, echo = FALSE, , message = FALSE, fig.width=8, fig.height=10}
+
+# Show plot
+plot_temporal_patterns(demand_data)
+```
+
+1. **Month Effect**: The first plot shows clear winter peaks rising from November to January, tapering off to lower demands in March, reflecting increased heating and lighting needs during colder months.
+
+  
+2. **Day-of-week effect**: Weekdays consistently show higher demand than weekends, with Friday's demands being slightly lower than the other days in the working week. This may reflect different industrial and commercial activity levels.
+
+3. **Intra-Year changes**: The data suggests some pattern in in peak demand as we move further away from November. These patterns seem consistent across the years, although we once again see a shift in yearly demand, whilst retaining the pattern, as seen in our first graph. This makes DSN an important variable to consider in modeling.
+
+From these plots collectively it is clear to see that when modelling the data we want to include some temporal dependence in two ways. Firstly, the time of year, whether that is the month or using the days-since-November variabele is an important factor. Secondly, it seems we should also be including the day of the week for modelling.
+
+### 2.3 Weather Relationship Analysis
+
+```{r, echo = FALSE, , warning = FALSE, message = FALSE, fig.width=8, fig.height=8}
+
+# Show plot
+plot_weather_relationships(demand_data)
+```
+
+
+1. **Temperature Effect**: There seems to be some cubic relationship between temperature and gross electricity demand from the first graph. This is however not too convincing as seen by the wide confidence inteval in teh tails and a seemly even spread in the scatterplot.
+  
+2. **Wind Effect**: Wind seems to have very little effect on demand from the second figure which means it may not be so useful in our model.
+
+3. **Solar Effect**: The solar effect is interesting. Many of the data-points lie about the 0 solar capacity. here the range of demands is high. The few data-points away from zero seem to be somewhat funneled, suggesting perhaps a `sqrt()` relation could be in effect, although it is difficult to be sure due to the uneven spread of data.
+
+4. **TE Effect**: The final plot shows that perhaps using the TE to model the relationship between temperature and demand may be a more useful measure as a more clear downwards trend can be identified. Seeing how it interacts in our model will be key.
+
+#### 3.2.1 Days Since November (DSN) Analysis
+
+An important aspect of winter demand patterns is the progression through the winter period, captured by the DSN variable (days since November 1st). This variable will be key in modelling the demand pattern, and the below graph explores both linear and quadratic effects of DSN:
+
+```{r, fig.width=8, fig.height=4, warning = FALSE, echo = FALSE}
+plot_dsn_effects(dsn_effects, demand_data)
+```
+
+The plot does seem to suggest that a quadratic model for DSN is more appropriate, however a sharp dip at around 60 days does not fit that quadratic trend, and so seeing how including either the linear or quadratic model effect our model fit and residual plots will be key.
+
+# Model fitting and cross-validation results
+
+In this section you should detail your choice of model and describe the process used to refine and fit the model. You are encouraged to explore different models methods but you should not include a detailed narrative of all of these attempts. For instance, you can mention the approaches you tried tried and include a comparison but do not add in depth discussions of these models beyond why they were rejected. This section should mention the methods explored and why they were rejected, but most of your effort should go into describing the model you are using and your process for tuning and validating it.
+
+Provide implementation details and include results from cross-validation or other model evaluation techniques, highlighting improvements and any trade-offs.
+
+Let us first examine the suggested model: $$M_0 : Y_i = \beta_0 + \beta_1 Wind_i + \beta_2 Solar_i + \beta_3 temp_i + \beta_4 wdayindex_i + \beta_5 monthindex_i + \epsilon_i,\quad \epsilon_i \sim Normal(0,\sigma^2)$$.
+
+```{r, echo = FALSE, message = FALSE}
+
+# Show suggested model summary
+summary(suggested_model)
+plot_model_diagnostics(suggested_model)
+```
+
+The R-squared value f this model is very low, suggesting it doesn't explain much of the variation in data. The residual plots are extremely poor, specifically they indicate: an incorrect normality assumption of the residuals due to an extremely skewed QQ plot,especially in the upper tail; and an incorrect constant variance assumption due to the residuals not being evenly spread about zero in the residuals vs fitted plot.
+
+Despite many of the variables being "significant" due to their p-values the poor R squared value is alarming. Oddly, the day of the week isn't seen to be statistically significant in this model. This is strange given we saw a stark trend in our plots above.
+
+In order to change this poor model we consider doing the following:
+
+1. We don't indexing time though `monthindex` variable. Instead we use the days-since-November variable (which captures seasonal trends) and the `dayindex` and `start_year` variables as factor variables to incorporate historical trends.
+2. We include wind and its square to see if there are any true effects in a larger model.
+3. We include solar effects and its square root, as indicated by our plot above which shows some funneling.
+4. We use `TE` to model temperature as indicated by our plot which shows a clearer trend than just the `temp` variable.
+5. We include interactions between `TE` and the temporal variables `DSN` and the categorical variables for the day of the week and year. This proved useful in our modelling due to how interlinked temperature is with trends in time.
+
+To implement those trends we fit the model: $$
+\begin{align}
+M_1 : Y_i &= \beta_0 + \sum_{j=1}^{J} \beta_{1j} \,\text{wday}_{ij} + \sum_{j=1}^{J} \beta_{2j} \,\text{wday}_{ij} \cdot \text{TE}_i + \sum_{k=1}^{K} \beta_{3k} \,\text{startyear}_{ik} + \sum_{k=1}^{K} \beta_{4k} \,\text{startyear}_{ik} \cdot \text{TE}_i + \beta_5 \,\text{DSN}_i  \\
+&\quad + \beta_6 \,\text{DSN}_i^2 + \beta_7 \,\text{DSN}_i \cdot \text{TE}_i + \beta_8 \,\text{DSN}_i^2 \cdot \text{TE}_i + \beta_9 \,\text{TE}_i + \beta_{10} \,\text{wind}_i + \beta_{11} \,\text{wind}_i^2 + \beta_{12} \,\text{solar}_i + \beta_{13} \,\sqrt{\text{solar}_i} + \epsilon_i,
+&\quad &\epsilon_i \sim \text{Normal}(0, \sigma^2).
+\end{align}
+$$ The model summary can be seen below.
+
+```{r, echo = FALSE, message = FALSE}
+# Show intermediate model summary
+summary(intermediate_model)
+plot_model_diagnostics(intermediate_model)
+```
+
+## Residual Plots Analysis
+
+Our standard residual plots are significantly better than those of the originally proposed model. Firstly, the Residuals vs Fitted plot shows a fairly random and even spread of residuals around zero. Their is a slight increase in residuals for higher fitted values suggesting our model does is not as accurate for predicting higher values of energy demand. 
+The Normal Q-Q plot shows that the standardised residuals follow a nearly perfect normal distribution across most quantiles. The only notable deviation occurs in the left tail,just before $-2$, where the points fall below the reference line. This indicates a slightly heavier left tail than expected under normality, suggesting that a few extreme observations have more negative residuals than predicted. However, this minor deviation is not substantial enough to raise concerns about the overall validity of the model. 
+The scale-location plot suggests the residuals have relatively constant variance across all levels of the predicted values. With a slight deviation in the 45,000–60,000 MWh range. This indicates our model is slightly less consistent (has slightly more error) when predicting higher demand levels.
+Overall, these diagnostic plots indicate that the final model provides a substantially improved fit compared to the original specification, with minor deviations suggesting our model is slightly less accurate at predicting higher energy demand values.
+
+## Model Significance
+
+Our model demonstrates a strong fit to the historical data, as reflected in an $R^2$ value of approximately 0.8. This represents a substantial improvement over the baseline model $M_0$, which achieved an $R^2$ of only around 0.065. The enhanced explanatory power of our model indicates a significantly better fit compared to $M_0$.
+
+## Improvements
+
+To further improve our model, we removed the variables for wind, $wind^2$, solar capacity, and the interaction between weekday and TE. This decision was informed by the low statistical significance of these variables, as indicated by their high $p$-values.
+
+
+This gives us the final reduced model: $$
+\begin{align}
+M_1 : Y_i &= \beta_0 + \sum_{j=1}^{J} \beta_{1j} \,\text{wday}_{ij} + \sum_{k=1}^{K} \beta_{3k} \,\text{startyear}_{ik} + \sum_{k=1}^{K} \beta_{4k} \,\text{startyear}_{ik} \cdot \text{TE}_i + \beta_5 \,\text{DSN}_i  \\
+&\quad + \beta_6 \,\text{DSN}_i^2 + \beta_7 \,\text{DSN}_i \cdot \text{TE}_i + \beta_8 \,\text{DSN}_i^2 \cdot \text{TE}_i + \beta_9 \,\text{TE}_i + \beta_{13} \,\sqrt{\text{solar}_i} + \epsilon_i,
+&\quad &\epsilon_i \sim \text{Normal}(0, \sigma^2).
+\end{align}
+$$ The model summary can be seen below.
+
+```{r, echo = FALSE, message = FALSE}
+# Show final model summary
+summary(final_model)
+plot_model_diagnostics(final_model)
+```
+## Residual Plots Analysis
+
+After removing the specified variables, our residual plots are broadly similar to the last model.
+
+Add some improvements??(if there are any)
+
+# Model Significance
+
+Our final model exhibits strong explanatory power, as indicated by an $R^2$ value of approximately 0.80 (rounded). Additionally, the coefficients are both relevant and highly statistically significant, as evidenced by their low $p$-values.
+
+Our decision to exclude the interaction between weekday index and TE, while retaining the interaction between year start index and TE, is supported not only by the $p$-values in the summary tables, but also by the diagnostic plots. Specifically, models with the weekday interaction removed exhibit improved performance, whereas models excluding the year-start interaction display increased deviation in the right-hand tail of the Q-Q plot, as illustrated in the figures below.
+
+
+```{r, echo = FALSE, message = FALSE}
+# Plot the QQ plots
+QQ_1 <- QQ_plot(final_model, "Weekday-TE interaction removed")
+QQ_3 <- QQ_plot(final_model_with_interactions, "Both interactions included")
+QQ_2 <- QQ_plot(final_model_without_year_interactions, "Year start-TE interaction removed")
+gridExtra::grid.arrange(QQ_1, QQ_2, QQ_3, ncol = 2)
+```
+
+These QQ-plots along with this p-values indicate why we were more comfortable excluding the weekday-TE interaction, as we are very interested in the performance of our model in the upper tail and removing the weekday interaction causes little disturbance to that upper tail whereas removing the year-start interaction throws some results slightly away from the diagonal in the upper tail..
+
+THEIR TEXT:
+Summarize here the key insights from your analysis, focusing on the final model’s predictive performance, reliability, and practical relevance for NESO. Discuss the importance of the selected covariates, as well as any observed limitations or assumptions that should be considered when applying the model in practice.
+
+Emphasize how your model can support NESO's long-term planning goals. If the model under performs in some respects, provide a clear and well-reasoned explanation. Keep in mind that a negative result, i.e. a model that does not work well predictively, that is well explained and justified in terms of why it failed will likely receive higher marks than a model with strong predictive performance but with poor or incorrect explanations and justifications. In other words, sound reasoning and transparency will be valued more than overclaiming results.
+
+# Prediction Accuracy Across Months
+
+# 2013-14 Test
+
+# Predicting peak daily demand using temperature.
+
+Our coefficient for the $TE$ term is $-6.030 \times 10^2$. We interpret this as: for every 1°C increase in temperature, gross daily electricity demand decreases by approximately 603 MWh, holding all other variables constant. This coefficient is highly statistically significant, suggesting a robust negative relationship between temperature and peak daily demand. That is, as temperature increases, demand for energy decreases — likely due to reduced heating requirements during warmer periods.
+
+# Model Limitations
+
+
+One limitation of our model is that the standard residual plots indicate reduced accuracy when predicting higher energy demand levels. This is evident in the Scale-Location plot, which shows slightly increased residual spread in the higher fitted value range. Furthermore, the Residuals vs Fitted plot suggests the model tends to overpredict demand in certain cases, as indicated by a modest concentration of residuals falling below zero. These patterns imply that the model is less precise in capturing the variability of peak demand periods.
+
+Add more limitations
+
+If time, discuss next steps e.g. how could we adapt our model to mitigate the limitations.
+
+# Code Appendix
+THEIR TEXT:
+Include here all the code used in your analysis. Ensure that the code is well-commented so it is easy to follow and reuse.
+
+```{r code=readLines("code.R"), eval=FALSE, echo=TRUE}
+# Do not change this code chunk
+```
+
