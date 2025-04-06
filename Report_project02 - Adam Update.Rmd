@@ -41,23 +41,16 @@ source("code.R")
 
 
 # Introduction
-THEIR TEXT:
-This section provides a brief introduction to the task and the datasets used. The introduction is intended to be understood by NESO analysts with a scientific background but limited statistical expertise. You can assume that the reader of your report has read the executive summary. Briefly outline the overall approach taken in modeling future daily peak electricity demand, describe the main steps involved, and summarize the key conclusions drawn from the analysis.
+
+In this report we explore a dataset that records the demand from the national grid over a period of just over a decade. We firstly explore the dataset, exploring why it indicated fitting certain models, and discuss how individual variables interact with the peak demand observation. We then fit several models. Firstly we explore the basic model that was provided and discuss how it fails to properly model the demand. We then fit a much larger model and refine it, which leads us to our fial model which incorporates historical data as well as some interactions between variables. Finally we discuss how well our model predicts peak demand and in general explore how well it models the data. A large part of our model's success came from properly utilising the DNS variable and the TE variable in the dataset which dramatically improved our model in the upper tail.
 
 # Data description and exploratory analysis
 
-THEIR TEXT:
-Emphasis should be placed on the data features that are relevant for the subsequent modeling. Include visualizations that help illustrate key patterns or relationships. All plots must also be described in the write up. Think carefully about whether each plot needs to be included in your final draft. Your report should include figures and tables but they should be as focused and impactful as possible.
-
-Clearly describe all preprocessing steps, including any transformations or new variables created. If the additional dataset (`SCS_hourly_temp.csv` ) is used, provide a concise explanation of its structure and relevance to the analysis.
-
 ### 2.1 Data Overview
 
-The analysis uses two datasets provided by NESO:
-- **SCS_demand_modelling.csv**: Contains daily data on electricity demand, weather factors, and temporal indicators
-- **SCS_hourly_temp.csv**: Contains hourly temperature data for additional temperature modeling
+We begin the analysis of the dataset provided by NESO **SCS_demand_modelling.csv**, which contains daily data on electricity demand, weather factors, and temporal indicators. It consits of the following variables.
 
-The primary dataset includes the following key variables:
+The dataset includes the following key variables:
 - **demand_gross (MW)**: Daily peak electricity demand at 6 pm
 - **wind**: Estimated capacity factor of wind generation at 6 pm
 - **solar_S**: Estimated capacity factor of solar generation at 6 pm
@@ -70,7 +63,7 @@ The primary dataset includes the following key variables:
 - **start_year**: Year at start of winter period
 - **DSN**: Number of days since November 1st
 
-Below is a table that summarises basic information from the non-indexed variables in the dataset.
+Below is a table that summarises basic information from the non-time indexing variables in the dataset.
 
 ```{r data-summary-table, echo = FALSE}
 # Display Averages Table
@@ -106,6 +99,8 @@ From these plots collectively it is clear to see that when modelling the data we
 
 ### 2.3 Weather Relationship Analysis
 
+Now that we have seen how the demand varies over time, we need to look at how weather conditions effect the peak demand observations. Below we plot 4 "weather variables", the solar power, wind and temperature via **temp** and **TE** against the demand and see what the effect of these variables is.
+
 ```{r, echo = FALSE, , warning = FALSE, message = FALSE, fig.width=8, fig.height=8}
 
 # Show plot
@@ -133,11 +128,11 @@ The plot does seem to suggest that a quadratic model for DSN is more appropriate
 
 # Model fitting and cross-validation results
 
-In this section you should detail your choice of model and describe the process used to refine and fit the model. You are encouraged to explore different models methods but you should not include a detailed narrative of all of these attempts. For instance, you can mention the approaches you tried tried and include a comparison but do not add in depth discussions of these models beyond why they were rejected. This section should mention the methods explored and why they were rejected, but most of your effort should go into describing the model you are using and your process for tuning and validating it.
-
-Provide implementation details and include results from cross-validation or other model evaluation techniques, highlighting improvements and any trade-offs.
+We now explore some different models and see how well they fit the data.
 
 Let us first examine the suggested model: $$M_0 : Y_i = \beta_0 + \beta_1 Wind_i + \beta_2 Solar_i + \beta_3 temp_i + \beta_4 wdayindex_i + \beta_5 monthindex_i + \epsilon_i,\quad \epsilon_i \sim Normal(0,\sigma^2)$$.
+
+Below is the model summary and the residual plots, which will indcate the models goodness of fit.
 
 ```{r, echo = FALSE, message = FALSE}
 
@@ -145,26 +140,25 @@ Let us first examine the suggested model: $$M_0 : Y_i = \beta_0 + \beta_1 Wind_i
 summary(suggested_model)
 plot_model_diagnostics(suggested_model)
 ```
+We can conclude a few things from the model summary. The R-squared value for this model is very low at around 0.06. This suggests that it doesn't explain much of the variation in data which is very poor and will not give us confindence in the prediction power of our model. Despite many of the variables being "significant" due to their p-values being less than 0.01, the poor R squared value is alarming and suggests that we need to utilise some outher variables if we want to properly fit a model with any prediction capabilities. Oddly, the day of the week isn't seen to be statistically significant in this model. This is strange given we saw a stark trend in our plots above. As we see below, when we refit the model we do still the day of the week, and that variable does become significant.
 
-The R-squared value f this model is very low, suggesting it doesn't explain much of the variation in data. The residual plots are extremely poor, specifically they indicate: an incorrect normality assumption of the residuals due to an extremely skewed QQ plot,especially in the upper tail; and an incorrect constant variance assumption due to the residuals not being evenly spread about zero in the residuals vs fitted plot.
+The residual plots are extremely poor also. Specifically, they indicate a violation of the normality assumption of the residuals due to an extremely skewed QQ plot. The points lie very far from the diagonal,especially in the upper tail, which is where we want the model to fit best. We also see a violation of the constant variance assumption due to the residuals not being evenly spread about zero in the residuals vs fitted plot. There seems to be a trend in the residuals as well as some funelling, which is another indicator that the model's fit is poor.
 
-Despite many of the variables being "significant" due to their p-values the poor R squared value is alarming. Oddly, the day of the week isn't seen to be statistically significant in this model. This is strange given we saw a stark trend in our plots above.
+In order to improve the model we consider doing the following:
 
-In order to change this poor model we consider doing the following:
-
-1. We don't indexing time though `monthindex` variable. Instead we use the days-since-November variable (which captures seasonal trends) and the `dayindex` and `start_year` variables as factor variables to incorporate historical trends.
+1. We don't index time though **monthindex** variable. Instead we use the days-since-November variable (which captures seasonal trends) and the **dayindex** and **start_year** variables as factor variables to incorporate historical trends.
 2. We include wind and its square to see if there are any true effects in a larger model.
 3. We include solar effects and its square root, as indicated by our plot above which shows some funneling.
-4. We use `TE` to model temperature as indicated by our plot which shows a clearer trend than just the `temp` variable.
-5. We include interactions between `TE` and the temporal variables `DSN` and the categorical variables for the day of the week and year. This proved useful in our modelling due to how interlinked temperature is with trends in time.
+4. We use **TE** to model temperature as indicated by our plot which shows a clearer trend than just the **temp** variable.
+5. We include interactions between **TE** and the temporal variables **DSN** and the categorical variables for the day of the week and year. This proved useful in our modelling due to how interlinked temperature is with trends in time.
 
-To implement those trends we fit the model: $$
+To implement these changes we fit the model: $$
 \begin{align}
 M_1 : Y_i &= \beta_0 + \sum_{j=1}^{J} \beta_{1j} \,\text{wday}_{ij} + \sum_{j=1}^{J} \beta_{2j} \,\text{wday}_{ij} \cdot \text{TE}_i + \sum_{k=1}^{K} \beta_{3k} \,\text{startyear}_{ik} + \sum_{k=1}^{K} \beta_{4k} \,\text{startyear}_{ik} \cdot \text{TE}_i + \beta_5 \,\text{DSN}_i  \\
 &\quad + \beta_6 \,\text{DSN}_i^2 + \beta_7 \,\text{DSN}_i \cdot \text{TE}_i + \beta_8 \,\text{DSN}_i^2 \cdot \text{TE}_i + \beta_9 \,\text{TE}_i + \beta_{10} \,\text{wind}_i + \beta_{11} \,\text{wind}_i^2 + \beta_{12} \,\text{solar}_i + \beta_{13} \,\sqrt{\text{solar}_i} + \epsilon_i,
 &\quad &\epsilon_i \sim \text{Normal}(0, \sigma^2).
 \end{align}
-$$ The model summary can be seen below.
+$$ To explore whether this model really is an improvement, we examine the model summary and residual plots again.
 
 ```{r, echo = FALSE, message = FALSE}
 # Show intermediate model summary
@@ -174,7 +168,7 @@ plot_model_diagnostics(intermediate_model)
 
 ## Residual Plots Analysis
 
-Our standard residual plots are significantly better than those of the originally proposed model. Firstly, the Residuals vs Fitted plot shows a fairly random and even spread of residuals around zero. Their is a slight increase in residuals for higher fitted values suggesting our model does is not as accurate for predicting higher values of energy demand. 
+Our standard residual plots are significantly better than those of the originally proposed model. Firstly, the Residuals vs Fitted plot shows a fairly random and even spread of residuals around zero. Their is a slight increase in residuals for higher fitted values suggesting our model is not as accurate for predicting higher values of energy demand. 
 The Normal Q-Q plot shows that the standardised residuals follow a nearly perfect normal distribution across most quantiles. The only notable deviation occurs in the left tail,just before $-2$, where the points fall below the reference line. This indicates a slightly heavier left tail than expected under normality, suggesting that a few extreme observations have more negative residuals than predicted. However, this minor deviation is not substantial enough to raise concerns about the overall validity of the model. 
 The scale-location plot suggests the residuals have relatively constant variance across all levels of the predicted values. With a slight deviation in the 45,000–60,000 MWh range. This indicates our model is slightly less consistent (has slightly more error) when predicting higher demand levels.
 Overall, these diagnostic plots indicate that the final model provides a substantially improved fit compared to the original specification, with minor deviations suggesting our model is slightly less accurate at predicting higher energy demand values.
@@ -253,4 +247,5 @@ Include here all the code used in your analysis. Ensure that the code is well-co
 ```{r code=readLines("code.R"), eval=FALSE, echo=TRUE}
 # Do not change this code chunk
 ```
+
 
